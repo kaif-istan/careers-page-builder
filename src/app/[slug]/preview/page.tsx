@@ -2,10 +2,12 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { use } from 'react'
+import { use, useRouter } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import toast from 'react-hot-toast'
 
 type PreviewData = {
   company: any
@@ -15,12 +17,31 @@ type PreviewData = {
 
 export default function PreviewPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params)
+  const router = useRouter()
   const [data, setData] = useState<PreviewData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const lastDataStrRef = useRef('')
+  const savedScrollRef = useRef<number | null>(null)
 
+  // Auth check - must be logged in to access preview page
   useEffect(() => {
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        toast.error('Please log in to view preview')
+        router.push(`/login?redirect=/${slug}/preview`)
+        return
+      }
+      
+      setCheckingAuth(false)
+      
+      // Load preview data after auth is verified
+      loadPreview()
+    }
+    
     async function loadPreview() {
       try {
         // First try to get from localStorage (client-side)
@@ -52,15 +73,33 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
         setLoading(false)
       }
     }
-
-    loadPreview()
+    
+    checkAuth()
 
     // Listen for custom preview-updated event (same-tab updates)
     const handlePreviewUpdate = (e: CustomEvent) => {
       if (e.detail?.slug === slug && e.detail?.data) {
+        // Save current scroll position
+        savedScrollRef.current = window.scrollY || window.pageYOffset || 0
+        
         setData({
           company: e.detail.data.company,
           sections: e.detail.data.sections,
+          isPreview: true,
+        })
+      }
+    }
+
+    // Listen for postMessage from parent window (iframe communication)
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return
+      if (e.data?.type === 'preview-update' && e.data?.slug === slug && e.data?.data) {
+        // Save current scroll position
+        savedScrollRef.current = window.scrollY || window.pageYOffset || 0
+        
+        setData({
+          company: e.data.data.company,
+          sections: e.data.data.sections,
           isPreview: true,
         })
       }
@@ -84,6 +123,7 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
 
     window.addEventListener('preview-updated', handlePreviewUpdate as EventListener)
     window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('message', handleMessage)
 
     // Also poll for changes (backup mechanism)
     const interval = setInterval(() => {
@@ -98,6 +138,9 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
           // Only update if data actually changed
           if (newDataStr !== lastDataStrRef.current) {
             lastDataStrRef.current = newDataStr
+            // Save current scroll position
+            savedScrollRef.current = window.scrollY || window.pageYOffset || 0
+            
             setData({
               company: previewData.company,
               sections: previewData.sections,
@@ -113,16 +156,34 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
     return () => {
       window.removeEventListener('preview-updated', handlePreviewUpdate as EventListener)
       window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('message', handleMessage)
       clearInterval(interval)
     }
   }, [slug])
 
-  if (loading) {
+  // Restore scroll position after data updates
+  useEffect(() => {
+    if (savedScrollRef.current !== null && data) {
+      // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (savedScrollRef.current !== null) {
+            window.scrollTo(0, savedScrollRef.current)
+            savedScrollRef.current = null
+          }
+        })
+      })
+    }
+  }, [data])
+
+  if (checkingAuth || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
-          <p className="text-zinc-600">Loading preview...</p>
+          <p className="text-zinc-600">
+            {checkingAuth ? 'Checking authentication...' : 'Loading preview...'}
+          </p>
         </div>
       </div>
     )

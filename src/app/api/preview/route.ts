@@ -1,10 +1,18 @@
 // src/app/api/preview/route.ts
 import { createServerSupabase } from '@/lib/supabase'
+import { getServerSession } from '@/lib/auth-server'
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
+    // Auth check - must be logged in to access preview API
+    const session = await getServerSession()
+    
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized - Please log in' }, { status: 401 })
+    }
+
     const searchParams = request.nextUrl.searchParams
     const slug = searchParams.get('slug')
 

@@ -106,6 +106,7 @@ export default function EditPage({
   const [previewSections, setPreviewSections] = useState<Section[]>([]);
   
   const [loading, setLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [activeTab, setActiveTab] = useState("brand");
@@ -120,67 +121,24 @@ export default function EditPage({
     },
   });
 
-  const watchedValues = watch();
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  // Use refs to always get latest values
-  const previewCompanyRef = useRef(previewCompany);
-  const previewSectionsRef = useRef(previewSections);
-  const publishedCompanyRef = useRef(publishedCompany);
-  
+  // Auth check - must be logged in to access edit page
   useEffect(() => {
-    previewCompanyRef.current = previewCompany;
-  }, [previewCompany]);
-  
-  useEffect(() => {
-    previewSectionsRef.current = previewSections;
-  }, [previewSections]);
-
-  useEffect(() => {
-    publishedCompanyRef.current = publishedCompany;
-  }, [publishedCompany]);
-
-  // Update preview storage function - uses refs to avoid stale closures
-  const updatePreviewStorage = useCallback(() => {
-    const currentCompany = previewCompanyRef.current;
-    const currentSections = previewSectionsRef.current;
-    const currentPublished = publishedCompanyRef.current;
-    
-    if (!currentCompany || !currentPublished) return;
-    
-    const previewData: PreviewData = {
-      company: currentCompany,
-      sections: currentSections,
-    };
-    
-    savePreviewToStorage(slug, previewData);
-    setHasUnsavedChanges(true);
-    
-    // Trigger custom event for same-tab updates (storage event only fires cross-tab)
-    window.dispatchEvent(new CustomEvent('preview-updated', {
-      detail: { slug, data: previewData }
-    }));
-    
-    // Force iframe refresh by updating a timestamp in the URL
-    setTimeout(() => {
-      const iframe = document.querySelector(`iframe[title="Live Preview"]`) as HTMLIFrameElement;
-      if (iframe) {
-        const currentSrc = iframe.src.split('?')[0];
-        iframe.src = `${currentSrc}?t=${Date.now()}`;
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        toast.error('Please log in to continue');
+        router.push(`/login?redirect=/${slug}/edit`);
+        return;
       }
-    }, 100);
-  }, [slug]);
-
-  // Debounced version for form changes
-  const debouncedUpdatePreview = useDebouncedCallback(updatePreviewStorage, 300);
-
-  // Load published data from Supabase
-  useEffect(() => {
-    async function load() {
+      
+      setCheckingAuth(false);
+      
+      // Load data after auth is verified
+      loadData();
+    }
+    
+    async function loadData() {
       const { data: comp, error } = await supabase
         .from("companies")
         .select("*")
@@ -190,6 +148,7 @@ export default function EditPage({
       if (error || !comp) {
         toast.error("Company not found");
         notFound();
+        return;
       }
 
       const { data: secs } = await supabase
@@ -236,8 +195,73 @@ export default function EditPage({
 
       setLoading(false);
     }
-    load();
-  }, [slug, reset]);
+    
+    checkAuth();
+  }, [router, slug, reset]);
+
+  const watchedValues = watch();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // Use refs to always get latest values
+  const previewCompanyRef = useRef(previewCompany);
+  const previewSectionsRef = useRef(previewSections);
+  const publishedCompanyRef = useRef(publishedCompany);
+  
+  useEffect(() => {
+    previewCompanyRef.current = previewCompany;
+  }, [previewCompany]);
+  
+  useEffect(() => {
+    previewSectionsRef.current = previewSections;
+  }, [previewSections]);
+
+  useEffect(() => {
+    publishedCompanyRef.current = publishedCompany;
+  }, [publishedCompany]);
+
+  // Update preview storage function - uses refs to avoid stale closures
+  const updatePreviewStorage = useCallback(() => {
+    const currentCompany = previewCompanyRef.current;
+    const currentSections = previewSectionsRef.current;
+    const currentPublished = publishedCompanyRef.current;
+    
+    if (!currentCompany || !currentPublished) return;
+    
+    const previewData: PreviewData = {
+      company: currentCompany,
+      sections: currentSections,
+    };
+    
+    savePreviewToStorage(slug, previewData);
+    setHasUnsavedChanges(true);
+    
+    // Trigger custom event for same-tab updates (storage event only fires cross-tab)
+    // The preview page listens for this event and updates without reloading
+    window.dispatchEvent(new CustomEvent('preview-updated', {
+      detail: { slug, data: previewData }
+    }));
+    
+    // Also send message to iframe if it exists (for cross-frame communication)
+    const iframe = document.querySelector(`iframe[title="Live Preview"]`) as HTMLIFrameElement;
+    if (iframe && iframe.contentWindow) {
+      try {
+        iframe.contentWindow.postMessage({
+          type: 'preview-update',
+          slug,
+          data: previewData
+        }, window.location.origin);
+      } catch (e) {
+        // Cross-origin or other error, ignore
+      }
+    }
+  }, [slug]);
+
+  // Debounced version for form changes
+  const debouncedUpdatePreview = useDebouncedCallback(updatePreviewStorage, 300);
 
   // Update preview when form values change
   useEffect(() => {
@@ -463,12 +487,14 @@ export default function EditPage({
     toast.success("Preview link copied!");
   };
 
-  if (loading) {
+  if (checkingAuth || loading) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
-          <p className="text-zinc-600">Loading...</p>
+          <p className="text-zinc-600">
+            {checkingAuth ? 'Checking authentication...' : 'Loading...'}
+          </p>
         </div>
       </div>
     );
