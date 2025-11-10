@@ -7,6 +7,8 @@ export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+
+
 // Server-side (never exposed to client)
 export const createServerSupabase = () => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
