@@ -5,6 +5,7 @@ import type { Metadata } from 'next'
 import JobCard from './JobCard'
 import FilterSidebar from './FilterSidebar'
 import SearchInput from './SearchInput'
+import Image from 'next/image'
 
 type Props = {
   params: { slug: string }
@@ -12,10 +13,11 @@ type Props = {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const slug = await params
   const { data: company } = await supabase
     .from('companies')
     .select('name')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .single()
 
   return {
@@ -31,9 +33,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CareersPage({ params, searchParams }: Props) {
   const { slug } = await params
-  const search = await searchParams.q?.toLowerCase() || ''
-  const filterLocation = await searchParams.location
-  const filterType =await  searchParams.type
+  const searchparams = await searchParams
+  const search = await searchparams.q?.toLowerCase() || ''
+  const filterLocation = await searchparams.location
+  const filterType =await  searchparams.type
 
   // Fetch company
   const { data: company, error: companyError } = await supabase
@@ -89,11 +92,19 @@ export default async function CareersPage({ params, searchParams }: Props) {
         className="relative h-96 bg-cover bg-center"
         style={{ backgroundImage: company.banner_url ? `url(${company.banner_url})` : 'none' }}
       >
-        <div className="absolute inset-0 bg-black bg-opacity-40" />
         <div className="relative max-w-6xl mx-auto px-6 h-full flex items-center">
           <div>
             {company.logo_url && (
-              <img src={company.logo_url} alt={`${company.name} logo`} className="h-20 w-20 rounded-full border-4 border-white mb-4" />
+              <div className="h-24 w-24 rounded-full mb-4  flex items-center justify-center">
+              <Image 
+              src={company.logo_url}
+              alt={`${company.name} logo`}
+              width={100}
+              height={100}
+              className="h-full w-full rounded-full border-4 border-white mb-4"
+              // REMOVED onError — NOT ALLOWED IN SERVER COMPONENT
+            />
+            </div>
             )}
             <h1 className="text-5xl font-bold text-white">{company.name} Careers</h1>
             <p className="text-xl text-white mt-2">Join our team and build the future</p>

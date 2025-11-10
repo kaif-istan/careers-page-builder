@@ -1,18 +1,28 @@
-// src/app/[slug]/careers/FilterSidebar.tsx
 'use client'
+
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
 
 export default function FilterSidebar({ locations, types, selectedLocation, selectedType }: any) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const updateFilter = (key: string, value: string | null) => {
-    const params = new URLSearchParams(searchParams)
-    if (value) params.set(key, value)
-    else params.delete(key)
-    router.push(`${pathname}?${params.toString()}`)
-  }
+  const [location, setLocation] = useState(selectedLocation || '')
+  const [type, setType] = useState(selectedType || '')
+
+  // When dropdowns change, update URL but don't scroll or reload fully
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+
+    if (location) params.set('location', location)
+    else params.delete('location')
+
+    if (type) params.set('type', type)
+    else params.delete('type')
+
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }, [location, type])
 
   return (
     <div className="space-y-6">
@@ -20,12 +30,14 @@ export default function FilterSidebar({ locations, types, selectedLocation, sele
         <h4 className="font-medium text-sm text-gray-900 mb-2">Location</h4>
         <select
           className="w-full p-2 border rounded-lg text-sm"
-          value={selectedLocation || ''}
-          onChange={e => updateFilter('location', e.target.value || null)}
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
         >
           <option value="">All Locations</option>
           {locations.map((loc: string) => (
-            <option key={loc} value={loc}>{loc}</option>
+            <option key={loc} value={loc}>
+              {loc}
+            </option>
           ))}
         </select>
       </div>
@@ -34,12 +46,14 @@ export default function FilterSidebar({ locations, types, selectedLocation, sele
         <h4 className="font-medium text-sm text-gray-900 mb-2">Employment Type</h4>
         <select
           className="w-full p-2 border rounded-lg text-sm"
-          value={selectedType || ''}
-          onChange={e => updateFilter('type', e.target.value || null)}
+          value={type}
+          onChange={(e) => setType(e.target.value)}
         >
           <option value="">All Types</option>
-          {types.map((type: string) => (
-            <option key={type} value={type}>{type}</option>
+          {types.map((t: string) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
           ))}
         </select>
       </div>

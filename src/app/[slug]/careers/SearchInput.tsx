@@ -1,18 +1,25 @@
-// src/app/[slug]/careers/SearchInput.tsx
 'use client'
-import { useRouter, usePathname } from 'next/navigation'
+
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useDebouncedCallback } from 'use-debounce'
 import { Search } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 export default function SearchInput({ defaultValue }: { defaultValue: string }) {
   const router = useRouter()
   const pathname = usePathname()
+  const [term, setTerm] = useState(defaultValue || '')
 
-  const handleSearch = useDebouncedCallback((term: string) => {
-    const params = new URLSearchParams()
-    if (term) params.set('q', term)
-    router.push(`${pathname}?${params.toString()}`)
-  }, 300)
+  const handleSearch = useDebouncedCallback((value: string) => {
+    const params = new URLSearchParams(window.location.search)
+    if (value) params.set('q', value)
+    else params.delete('q')
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }, 400)
+
+  useEffect(() => {
+    handleSearch(term)
+  }, [term])
 
   return (
     <div className="relative">
@@ -20,8 +27,8 @@ export default function SearchInput({ defaultValue }: { defaultValue: string }) 
       <input
         type="text"
         placeholder="Search job title..."
-        defaultValue={defaultValue}
-        onChange={e => handleSearch(e.target.value)}
+        value={term}
+        onChange={(e) => setTerm(e.target.value)}
         className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
     </div>

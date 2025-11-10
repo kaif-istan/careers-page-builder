@@ -20,7 +20,7 @@ export default function JobCard({ job, companySlug }: { job: any; companySlug: s
         <div className="mt-4 flex gap-3 text-sm">
           <span className="text-gray-700">{job.employment_type}</span>
           <span className="text-gray-700">{job.work_policy}</span>
-          {job.salary_range && <span className="font-medium text-green-600">{job.salary_range}</span>}
+          {job.salary_range && <span className="font-medium text-[#4D4DFF]">{job.salary_range}</span>}
         </div>
 
         <p className="mt-3 text-gray-600 line-clamp-2">{job.description}</p>
