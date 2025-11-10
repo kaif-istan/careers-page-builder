@@ -1,65 +1,87 @@
-import Image from "next/image";
+// src/app/page.tsx
+'use client'
+
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+console.log('Supabase Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0, 10))
+
 
 export default function Home() {
+  const [email, setEmail] = useState('recruiter@acme.com')
+  const [password, setPassword] = useState('password123')
+  const [user, setUser] = useState<any>(null)
+  const [company, setCompany] = useState<any>(null)
+
+  const login = async () => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    console.log('Supabase login response:', { data, error })
+    if (error){
+      console.error(error)
+      return alert(error.message)
+    }
+    setUser(data.user)
+
+    // Fetch company
+    const { data: comp } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('slug', 'acme')
+      .single()
+
+    setCompany(comp)
+  }
+
+  const logout = () => supabase.auth.signOut()
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="p-8 max-w-2xl mx-auto">
+      <h1 className="text-3xl font-bold mb-6">Careers Page Builder</h1>
+
+      {!user ? (
+        <div className="space-y-4">
+          <input
+            className="w-full p-3 border rounded"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+          />
+          <input
+            className="w-full p-3 border rounded"
+            placeholder="Password"
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+          />
+          <button
+            onClick={login}
+            className="w-full bg-blue-600 text-white p-3 rounded font-medium"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Login
+          </button>
         </div>
-      </main>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <p>Logged in as: <strong>{user.email}</strong></p>
+            <button onClick={logout} className="text-red-600">Logout</button>
+          </div>
+
+          {company ? (
+            <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="text-xl font-semibold">{company.name}</h2>
+              <p>Slug: <code>{company.slug}</code></p>
+              <p>Color: <span style={{ color: company.primary_color }}>■■■</span> {company.primary_color}</p>
+              <a href={`/${company.slug}/edit`} className="text-blue-600 underline">
+                → Go to Edit Page
+              </a>
+            </div>
+          ) : (
+            <p>Loading company...</p>
+          )}
+        </div>
+      )}
     </div>
-  );
+  )
 }
