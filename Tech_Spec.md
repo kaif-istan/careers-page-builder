@@ -1,0 +1,2 @@
+Currently, the system uses a single authenticated recruiter (seeded in Supabase Auth) who can manage multiple companies for demonstration purposes.
+In production, each recruiter would have their own login associated with exactly one company.

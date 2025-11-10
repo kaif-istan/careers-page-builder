@@ -3,7 +3,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { Company, Section } from "@/types";
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useCallback, useRef } from "react";
 import {
   DndContext,
   closestCenter,
@@ -35,9 +35,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GripVertical, Trash2, Plus, Eye } from "lucide-react";
-import { notFound } from "next/navigation";
+import { GripVertical, Trash2, Plus, Eye, Check, Loader2, ExternalLink, Copy, Save, X } from "lucide-react";
+import { notFound, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { motion, AnimatePresence } from "motion/react";
+import Link from "next/link";
+import { useDebouncedCallback } from "use-debounce";
+
 
 const brandSchema = z.object({
   logo_url: z.string().url().or(z.literal("")),
@@ -48,18 +52,65 @@ const brandSchema = z.object({
 
 type BrandForm = z.infer<typeof brandSchema>;
 
+type PreviewData = {
+  company: Partial<Company>;
+  sections: Section[];
+};
+
+// Helper functions for localStorage
+const getPreviewKey = (slug: string) => `preview_${slug}`;
+
+const savePreviewToStorage = (slug: string, data: PreviewData) => {
+  try {
+    localStorage.setItem(getPreviewKey(slug), JSON.stringify(data));
+    // Also set cookie for API route access
+    document.cookie = `preview_${slug}=${encodeURIComponent(JSON.stringify(data))}; path=/; max-age=86400; SameSite=Lax`;
+  } catch (error) {
+    console.error("Failed to save preview:", error);
+  }
+};
+
+const loadPreviewFromStorage = (slug: string): PreviewData | null => {
+  try {
+    const stored = localStorage.getItem(getPreviewKey(slug));
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    console.error("Failed to load preview:", error);
+    return null;
+  }
+};
+
+const clearPreviewStorage = (slug: string) => {
+  try {
+    localStorage.removeItem(getPreviewKey(slug));
+    document.cookie = `preview_${slug}=; path=/; max-age=0`;
+  } catch (error) {
+    console.error("Failed to clear preview:", error);
+  }
+};
+
 export default function EditPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
-  const [company, setCompany] = useState<Company | null>(null);
-  const [sections, setSections] = useState<Section[]>([]);
+  const router = useRouter();
+  
+  // Published data (from Supabase)
+  const [publishedCompany, setPublishedCompany] = useState<Company | null>(null);
+  const [publishedSections, setPublishedSections] = useState<Section[]>([]);
+  
+  // Preview data (local state - unsaved changes)
+  const [previewCompany, setPreviewCompany] = useState<Partial<Company> | null>(null);
+  const [previewSections, setPreviewSections] = useState<Section[]>([]);
+  
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [activeTab, setActiveTab] = useState("brand");
 
-  const { register, handleSubmit, reset } = useForm<BrandForm>({
+  const { register, handleSubmit, reset, watch, setValue } = useForm<BrandForm>({
     resolver: zodResolver(brandSchema),
     defaultValues: {
       logo_url: "",
@@ -69,12 +120,65 @@ export default function EditPage({
     },
   });
 
+  const watchedValues = watch();
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Load company + sections
+  // Use refs to always get latest values
+  const previewCompanyRef = useRef(previewCompany);
+  const previewSectionsRef = useRef(previewSections);
+  const publishedCompanyRef = useRef(publishedCompany);
+  
+  useEffect(() => {
+    previewCompanyRef.current = previewCompany;
+  }, [previewCompany]);
+  
+  useEffect(() => {
+    previewSectionsRef.current = previewSections;
+  }, [previewSections]);
+
+  useEffect(() => {
+    publishedCompanyRef.current = publishedCompany;
+  }, [publishedCompany]);
+
+  // Update preview storage function - uses refs to avoid stale closures
+  const updatePreviewStorage = useCallback(() => {
+    const currentCompany = previewCompanyRef.current;
+    const currentSections = previewSectionsRef.current;
+    const currentPublished = publishedCompanyRef.current;
+    
+    if (!currentCompany || !currentPublished) return;
+    
+    const previewData: PreviewData = {
+      company: currentCompany,
+      sections: currentSections,
+    };
+    
+    savePreviewToStorage(slug, previewData);
+    setHasUnsavedChanges(true);
+    
+    // Trigger custom event for same-tab updates (storage event only fires cross-tab)
+    window.dispatchEvent(new CustomEvent('preview-updated', {
+      detail: { slug, data: previewData }
+    }));
+    
+    // Force iframe refresh by updating a timestamp in the URL
+    setTimeout(() => {
+      const iframe = document.querySelector(`iframe[title="Live Preview"]`) as HTMLIFrameElement;
+      if (iframe) {
+        const currentSrc = iframe.src.split('?')[0];
+        iframe.src = `${currentSrc}?t=${Date.now()}`;
+      }
+    }, 100);
+  }, [slug]);
+
+  // Debounced version for form changes
+  const debouncedUpdatePreview = useDebouncedCallback(updatePreviewStorage, 300);
+
+  // Load published data from Supabase
   useEffect(() => {
     async function load() {
       const { data: comp, error } = await supabase
@@ -92,71 +196,207 @@ export default function EditPage({
         .from("company_sections")
         .select("*")
         .eq("company_id", comp.id)
-        .order("order_index")
-        .select();
+        .order("order_index");
 
-      setCompany(comp);
-      setSections(secs || []);
+      setPublishedCompany(comp);
+      setPublishedSections(secs || []);
 
-      reset({
-        logo_url: comp.logo_url || "",
-        banner_url: comp.banner_url || "",
-        primary_color: comp.primary_color,
-        culture_video_url: comp.culture_video_url || "",
-      });
+      // Check for existing preview data
+      const existingPreview = loadPreviewFromStorage(slug);
+      if (existingPreview) {
+        const previewComp = { ...comp, ...existingPreview.company };
+        const previewSecs = existingPreview.sections;
+        previewCompanyRef.current = previewComp;
+        previewSectionsRef.current = previewSecs;
+        setPreviewCompany(previewComp);
+        setPreviewSections(previewSecs);
+        setHasUnsavedChanges(true);
+        
+        // Reset form with preview data
+        reset({
+          logo_url: existingPreview.company.logo_url || comp.logo_url || "",
+          banner_url: existingPreview.company.banner_url || comp.banner_url || "",
+          primary_color: existingPreview.company.primary_color || comp.primary_color,
+          culture_video_url: existingPreview.company.culture_video_url || comp.culture_video_url || "",
+        });
+      } else {
+        // No preview data, use published data
+        previewCompanyRef.current = comp;
+        previewSectionsRef.current = secs || [];
+        setPreviewCompany(comp);
+        setPreviewSections(secs || []);
+        
+        reset({
+          logo_url: comp.logo_url || "",
+          banner_url: comp.banner_url || "",
+          primary_color: comp.primary_color,
+          culture_video_url: comp.culture_video_url || "",
+        });
+      }
 
       setLoading(false);
     }
     load();
   }, [slug, reset]);
 
-  // SAVE BRAND
+  // Update preview when form values change
+  useEffect(() => {
+    if (!previewCompany || !publishedCompany) return;
+    
+    const updatedCompany = {
+      ...previewCompany,
+      logo_url: watchedValues.logo_url,
+      banner_url: watchedValues.banner_url,
+      primary_color: watchedValues.primary_color,
+      culture_video_url: watchedValues.culture_video_url,
+    };
+    
+    // Only update if something actually changed
+    const hasChanged = 
+      updatedCompany.logo_url !== previewCompany.logo_url ||
+      updatedCompany.banner_url !== previewCompany.banner_url ||
+      updatedCompany.primary_color !== previewCompany.primary_color ||
+      updatedCompany.culture_video_url !== previewCompany.culture_video_url;
+    
+    if (!hasChanged) return;
+    
+    // Update refs immediately so updatePreviewStorage has latest values
+    previewCompanyRef.current = updatedCompany;
+    setPreviewCompany(updatedCompany);
+    // Use debounced update for form changes
+    debouncedUpdatePreview();
+  }, [watchedValues.logo_url, watchedValues.banner_url, watchedValues.primary_color, watchedValues.culture_video_url]);
+
+  // Track sections serialization to detect changes
+  const sectionsSerializedRef = useRef<string>('');
+  
+  useEffect(() => {
+    if (!previewCompany || !publishedCompany) return;
+    
+    const currentSerialized = JSON.stringify(previewSections);
+    // Only update if sections actually changed
+    if (currentSerialized === sectionsSerializedRef.current) return;
+    
+    sectionsSerializedRef.current = currentSerialized;
+    // Use a small delay to ensure state has settled, then update preview
+    const timer = setTimeout(() => {
+      updatePreviewStorage();
+    }, 50);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewSections]);
+
+  // Handle brand form submission (just updates preview, doesn't publish)
   const onSubmitBrand = async (data: BrandForm) => {
-    if (!company) return;
-    setSaving(true);
+    if (!previewCompany) return;
+    
+    const updatedCompany = {
+      ...previewCompany,
+      ...data,
+    };
+    
+    setPreviewCompany(updatedCompany);
+    toast.success("Preview updated!");
+  };
 
-    console.log("Current company:", company);
-    console.log("Form data:", data);
-    console.log(slug)
+  // PUBLISH - Save to Supabase
+  const handlePublish = async () => {
+    if (!previewCompany || !publishedCompany) return;
+    
+    setPublishing(true);
 
-    // COMPARE: Only send fields that changed
-    const changes: Partial<Company> = {};
-    if (data.logo_url !== company.logo_url) changes.logo_url = data.logo_url;
-    if (data.banner_url !== company.banner_url)
-      changes.banner_url = data.banner_url;
-    if (data.primary_color !== company.primary_color)
-      changes.primary_color = data.primary_color;
-    if (data.culture_video_url !== company.culture_video_url)
-      changes.culture_video_url = data.culture_video_url;
+    try {
+      // Update company
+      const companyChanges: Partial<Company> = {};
+      if (previewCompany.logo_url !== publishedCompany.logo_url) {
+        companyChanges.logo_url = previewCompany.logo_url || null;
+      }
+      if (previewCompany.banner_url !== publishedCompany.banner_url) {
+        companyChanges.banner_url = previewCompany.banner_url || null;
+      }
+      if (previewCompany.primary_color !== publishedCompany.primary_color) {
+        companyChanges.primary_color = previewCompany.primary_color;
+      }
+      if (previewCompany.culture_video_url !== publishedCompany.culture_video_url) {
+        companyChanges.culture_video_url = previewCompany.culture_video_url || null;
+      }
 
-    // If no changes → show toast and exit
-    if (Object.keys(changes).length === 0) {
-      setSaving(false);
-      toast.success("No changes to save");
-      return;
+      if (Object.keys(companyChanges).length > 0) {
+        const { error: companyError } = await supabase
+          .from("companies")
+          .update(companyChanges)
+          .eq("id", publishedCompany.id);
+
+        if (companyError) throw companyError;
+      }
+
+      // Update sections
+      // Delete removed sections
+      const previewSectionIds = new Set(previewSections.map(s => s.id));
+      const sectionsToDelete = publishedSections.filter(s => !previewSectionIds.has(s.id));
+      
+      for (const section of sectionsToDelete) {
+        await supabase.from("company_sections").delete().eq("id", section.id);
+      }
+
+      // Upsert all preview sections
+      const sectionUpdates = previewSections.map((s, index) => ({
+        id: s.id,
+        company_id: publishedCompany.id,
+        type: s.type,
+        title: s.title,
+        content: s.content,
+        image_url: s.image_url || null,
+        order_index: index,
+      }));
+
+      if (sectionUpdates.length > 0) {
+        const { error: sectionsError } = await supabase
+          .from("company_sections")
+          .upsert(sectionUpdates);
+
+        if (sectionsError) throw sectionsError;
+      }
+
+      // Update published state
+      setPublishedCompany({ ...publishedCompany, ...companyChanges });
+      setPublishedSections([...previewSections]);
+      
+      // Clear preview storage
+      clearPreviewStorage(slug);
+      setHasUnsavedChanges(false);
+      
+      toast.success("Published successfully! 🎉");
+      
+      // Refresh the page to show published data
+      setTimeout(() => {
+        router.refresh();
+      }, 1000);
+    } catch (error: any) {
+      toast.error(`Failed to publish: ${error.message}`);
+    } finally {
+      setPublishing(false);
     }
+  };
 
-    console.log("Sending changes:", changes);
-
-
-    const { data: updated, error } = await supabase
-      .from("companies")
-      .update(changes)
-      .eq("id", company.id)
-      .select()
-
-    console.log("Update result:", { updated });
-
-    setSaving(false);
-
-    if (error) {
-      toast.error(`Failed: ${error.message}`);
-    } else if (updated && updated.length > 0) {
-      toast.success("Brand updated!");
-      // Update local state
-      setCompany({ ...company, ...changes });
-    } else {
-      toast.error("Update failed (no rows matched)");
+  // DISCARD - Clear preview and revert to published
+  const handleDiscard = () => {
+    if (!publishedCompany) return;
+    
+    if (confirm("Are you sure you want to discard all unsaved changes?")) {
+      clearPreviewStorage(slug);
+      setPreviewCompany(publishedCompany);
+      setPreviewSections(publishedSections);
+      setHasUnsavedChanges(false);
+      
+      reset({
+        logo_url: publishedCompany.logo_url || "",
+        banner_url: publishedCompany.banner_url || "",
+        primary_color: publishedCompany.primary_color,
+        culture_video_url: publishedCompany.culture_video_url || "",
+      });
+      
+      toast.success("Changes discarded");
     }
   };
 
@@ -165,275 +405,400 @@ export default function EditPage({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIdx = sections.findIndex((s) => s.id === active.id);
-    const newIdx = sections.findIndex((s) => s.id === over.id);
-    const newSections = arrayMove(sections, oldIdx, newIdx);
+    const oldIdx = previewSections.findIndex((s) => s.id === active.id);
+    const newIdx = previewSections.findIndex((s) => s.id === over.id);
+    const newSections = arrayMove(previewSections, oldIdx, newIdx);
 
-    const updates = newSections.map((s, i) => ({ id: s.id, order_index: i }));
-    const { error } = await supabase.from("company_sections").upsert(updates);
-
-    if (!error) {
-      setSections(newSections);
-      toast.success("Sections reordered");
-    } else {
-      toast.error("Failed to reorder");
-    }
+    previewSectionsRef.current = newSections;
+    setPreviewSections(newSections);
+    toast.success("Sections reordered");
   };
 
-  // ADD SECTION — FIXED: Only if company exists
-  const addSection = async () => {
-    if (!company) {
+  // ADD SECTION
+  const addSection = () => {
+    if (!previewCompany) {
       toast.error("Company not loaded");
       return;
     }
 
-    const newSec: Partial<Section> = {
-      company_id: company.id, // ← SAFE: company is not null
+    const newSec: Section = {
+      id: crypto.randomUUID(),
+      company_id: previewCompany.id!,
       type: "about",
       title: "New Section",
       content: "Edit this content...",
-      order_index: sections.length,
+      image_url: null,
+      order_index: previewSections.length,
     };
 
-    const { data, error } = await supabase
-      .from("company_sections")
-      .insert(newSec)
-      .select()
-      .single();
-
-    if (data) {
-      setSections([...sections, data]);
-      toast.success("Section added");
-    } else {
-      toast.error("Failed to add section");
-    }
+    const updated = [...previewSections, newSec];
+    previewSectionsRef.current = updated;
+    setPreviewSections(updated);
+    toast.success("Section added");
   };
 
   // DELETE SECTION
-  const deleteSection = async (id: string) => {
-    const { error } = await supabase
-      .from("company_sections")
-      .delete()
-      .eq("id", id);
-    if (!error) {
-      setSections(sections.filter((s) => s.id !== id));
-      toast.success("Section deleted");
-    } else {
-      toast.error("Failed to delete");
-    }
+  const deleteSection = (id: string) => {
+    const updated = previewSections.filter((s) => s.id !== id);
+    previewSectionsRef.current = updated;
+    setPreviewSections(updated);
+    toast.success("Section deleted");
   };
 
   // UPDATE SECTION
-  const updateSection = async (
-    id: string,
-    field: keyof Section,
-    value: string
-  ) => {
-    const { error } = await supabase
-      .from("company_sections")
-      .update({ [field]: value })
-      .eq("id", id);
-    if (error) toast.error("Failed to update");
+  const updateSection = (id: string, field: keyof Section, value: string) => {
+    const updated = previewSections.map((s) =>
+      s.id === id ? { ...s, [field]: value } : s
+    );
+    // Update ref immediately
+    previewSectionsRef.current = updated;
+    setPreviewSections(updated);
+    // Trigger immediate update for section content changes
+    setTimeout(() => updatePreviewStorage(), 100);
   };
 
-  if (loading) return <div className="p-8 text-center">Loading...</div>;
+  const copyPreviewLink = () => {
+    const url = `${window.location.origin}/${slug}/preview`;
+    navigator.clipboard.writeText(url);
+    toast.success("Preview link copied!");
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
+          <p className="text-zinc-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!previewCompany || !publishedCompany) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">
-            {company?.name} — Careers Editor
-          </h1>
-          <Button asChild>
-            <a href={`/${slug}/preview`} className="flex items-center gap-2">
-              <Eye className="w-4 h-4" /> Preview
-            </a>
-          </Button>
+    <div className="min-h-screen bg-zinc-50">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-zinc-200 shadow-sm">
+        <div className="max-w-full mx-auto px-6 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">
+              {previewCompany.name} — Editor
+            </h1>
+            <p className="text-sm text-zinc-500 mt-0.5">
+              {hasUnsavedChanges ? (
+                <span className="text-amber-600 font-medium">● Unsaved changes</span>
+              ) : (
+                "All changes published"
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {hasUnsavedChanges && (
+              <Button
+                variant="outline"
+                onClick={handleDiscard}
+                className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <X className="w-4 h-4" />
+                Discard
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={copyPreviewLink}
+              className="gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              Copy Preview Link
+            </Button>
+            <Button
+              onClick={handlePublish}
+              disabled={!hasUnsavedChanges || publishing}
+              className="gap-2"
+              style={{
+                backgroundColor: hasUnsavedChanges ? (previewCompany.primary_color || "#3b82f6") : undefined,
+              }}
+            >
+              {publishing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Publishing...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Publish Changes
+                </>
+              )}
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <Link href={`/${slug}/preview`} target="_blank">
+                <Eye className="w-4 h-4" />
+                Preview
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            </Button>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6">
-        <Tabs defaultValue="brand" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="brand">Brand</TabsTrigger>
-            <TabsTrigger value="content">Content</TabsTrigger>
-          </TabsList>
+      {/* Split Screen Layout */}
+      <div className="flex h-[calc(100vh-73px)]">
+        {/* Left Sidebar - Editor */}
+        <div className="w-full lg:w-1/2 border-r border-zinc-200 overflow-y-auto bg-white">
+          <div className="max-w-2xl mx-auto p-6">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="brand">Brand</TabsTrigger>
+                <TabsTrigger value="content">Content</TabsTrigger>
+              </TabsList>
 
-          {/* BRAND TAB */}
-          <TabsContent value="brand" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Brand Settings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* BRAND TAB */}
-                <TabsContent value="brand" className="mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Brand Settings</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <form
-                        onSubmit={handleSubmit(onSubmitBrand)}
-                        className="space-y-4"
-                      >
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Logo URL
-                          </label>
-                          <Input
-                            {...register("logo_url")}
-                            placeholder="https://..."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Banner URL
-                          </label>
-                          <Input
-                            {...register("banner_url")}
-                            placeholder="https://..."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Primary Color
-                          </label>
+              {/* BRAND TAB */}
+              <TabsContent value="brand" className="space-y-6">
+                <Card className="border-zinc-200 shadow-sm">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl">Brand Settings</CardTitle>
+                    <p className="text-sm text-zinc-500 mt-1">
+                      Customize your company's visual identity
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <form
+                      onSubmit={handleSubmit(onSubmitBrand)}
+                      className="space-y-6"
+                    >
+                      <div className="space-y-2">
+                        <label className="block text-sm font-semibold text-zinc-900">
+                          Logo URL
+                        </label>
+                        <Input
+                          {...register("logo_url")}
+                          placeholder="https://example.com/logo.png"
+                          className="rounded-xl"
+                        />
+                        <p className="text-xs text-zinc-500">
+                          Upload your logo to a CDN or image hosting service
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-sm font-semibold text-zinc-900">
+                          Banner URL
+                        </label>
+                        <Input
+                          {...register("banner_url")}
+                          placeholder="https://example.com/banner.jpg"
+                          className="rounded-xl"
+                        />
+                        <p className="text-xs text-zinc-500">
+                          Hero banner image (recommended: 1920x600px)
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-sm font-semibold text-zinc-900">
+                          Primary Color
+                        </label>
+                        <div className="flex items-center gap-3">
                           <Input
                             type="color"
                             {...register("primary_color")}
-                            className="w-full h-10"
+                            className="w-20 h-12 rounded-xl cursor-pointer border-zinc-200"
                           />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Culture Video (YouTube)
-                          </label>
                           <Input
-                            {...register("culture_video_url")}
-                            placeholder="https://youtube.com/watch?v=..."
+                            {...register("primary_color")}
+                            placeholder="#3b82f6"
+                            className="flex-1 rounded-xl"
                           />
                         </div>
-                        <div className="pt-4">
-                          <Button
-                            type="submit"
-                            disabled={saving}
-                            className="w-full"
-                          >
-                            {saving ? "Saving..." : "Update Brand"}
-                          </Button>
-                        </div>
-                      </form>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                        <p className="text-xs text-zinc-500">
+                          Used for buttons and accents
+                        </p>
+                      </div>
 
-          {/* CONTENT TAB */}
-          <TabsContent value="content" className="mt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Content Sections</h2>
-              <Button onClick={addSection} size="sm">
-                <Plus className="w-4 h-4 mr-1" /> Add Section
-              </Button>
-            </div>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-semibold text-zinc-900">
+                          Culture Video (YouTube)
+                        </label>
+                        <Input
+                          {...register("culture_video_url")}
+                          placeholder="https://youtube.com/watch?v=..."
+                          className="rounded-xl"
+                        />
+                        <p className="text-xs text-zinc-500">
+                          YouTube video URL showcasing your company culture
+                        </p>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={sections.map((s) => s.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-4">
-                  {sections.map((section) => (
-                    <SortableSection
-                      key={section.id}
-                      section={section}
-                      onUpdate={updateSection}
-                      onDelete={deleteSection}
-                    />
-                  ))}
+              {/* CONTENT TAB */}
+              <TabsContent value="content" className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-xl font-semibold text-zinc-900">
+                      Content Sections
+                    </h2>
+                    <p className="text-sm text-zinc-500 mt-0.5">
+                      Drag to reorder sections
+                    </p>
+                  </div>
+                  <Button
+                    onClick={addSection}
+                    size="sm"
+                    className="rounded-xl gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Section
+                  </Button>
                 </div>
-              </SortableContext>
-            </DndContext>
-          </TabsContent>
-        </Tabs>
-      </main>
+
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={previewSections.map((s) => s.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-4">
+                      <AnimatePresence>
+                        {previewSections.map((section) => (
+                          <SortableSection
+                            key={section.id}
+                            section={section}
+                            onUpdate={updateSection}
+                            onDelete={deleteSection}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  </SortableContext>
+                </DndContext>
+
+                {previewSections.length === 0 && (
+                  <div className="text-center py-12 border-2 border-dashed border-zinc-200 rounded-2xl">
+                    <p className="text-zinc-500 mb-4">No sections yet</p>
+                    <Button onClick={addSection} variant="outline" className="rounded-xl">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Your First Section
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+
+        {/* Right Side - Live Preview */}
+        <div className="hidden lg:block w-1/2 bg-zinc-100 overflow-y-auto">
+          <div className="sticky top-0 bg-zinc-50 border-b border-zinc-200 px-6 py-3 z-10">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-zinc-700">Live Preview</h3>
+              <span className="text-xs text-zinc-500">Updates as you type</span>
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-zinc-200">
+              <iframe
+                src={`/${slug}/preview`}
+                className="w-full h-[calc(100vh-150px)] border-0"
+                title="Live Preview"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-// SortableSection (unchanged)
+// Enhanced SortableSection
 function SortableSection({
   section,
   onUpdate,
   onDelete,
 }: {
   section: Section;
-  onUpdate: any;
-  onDelete: any;
+  onUpdate: (id: string, field: keyof Section, value: string) => void;
+  onDelete: (id: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } =
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: section.id });
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   return (
-    <Card ref={setNodeRef} style={style} className="p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <div
-          {...attributes}
-          {...listeners}
-          className="cursor-grab text-gray-400"
-        >
-          <GripVertical className="w-5 h-5" />
-        </div>
-        <Select
-          defaultValue={section.type}
-          onValueChange={(v) => onUpdate(section.id, "type", v)}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="about">About Us</SelectItem>
-            <SelectItem value="culture">Life at Company</SelectItem>
-            <SelectItem value="values">Our Values</SelectItem>
-            <SelectItem value="benefits">Benefits</SelectItem>
-            <SelectItem value="team">Team</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => onDelete(section.id)}
-        >
-          <Trash2 className="w-4 h-4" />
-        </Button>
-      </div>
-      <Input
-        placeholder="Title"
-        defaultValue={section.title}
-        onChange={(e) => onUpdate(section.id, "title", e.target.value)}
-        className="mb-2"
-      />
-      <Textarea
-        placeholder="Content"
-        defaultValue={section.content}
-        onChange={(e) => onUpdate(section.id, "content", e.target.value)}
-        rows={4}
-        className="mb-2"
-      />
-      <Input
-        placeholder="Image URL"
-        defaultValue={section.image_url || ""}
-        onChange={(e) => onUpdate(section.id, "image_url", e.target.value)}
-      />
-    </Card>
+    <motion.div
+      ref={setNodeRef}
+      style={style}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      whileHover={{ scale: 1.01 }}
+    >
+      <Card className="border-zinc-200 shadow-sm hover:shadow-md transition-shadow">
+        <CardContent className="p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing text-zinc-400 hover:text-zinc-600 transition-colors"
+            >
+              <GripVertical className="w-5 h-5" />
+            </div>
+            <Select
+              defaultValue={section.type}
+              onValueChange={(v) => onUpdate(section.id, "type", v)}
+            >
+              <SelectTrigger className="w-48 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="about">About Us</SelectItem>
+                <SelectItem value="culture">Life at Company</SelectItem>
+                <SelectItem value="values">Our Values</SelectItem>
+                <SelectItem value="benefits">Benefits</SelectItem>
+                <SelectItem value="team">Team</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onDelete(section.id)}
+              className="ml-auto rounded-xl hover:bg-red-50 hover:text-red-600"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+          <Input
+            placeholder="Section Title"
+            defaultValue={section.title}
+            onChange={(e) => onUpdate(section.id, "title", e.target.value)}
+            className="mb-3 rounded-xl font-semibold"
+          />
+          <Textarea
+            placeholder="Section content... (supports line breaks)"
+            defaultValue={section.content}
+            onChange={(e) => onUpdate(section.id, "content", e.target.value)}
+            rows={5}
+            className="mb-3 rounded-xl resize-none"
+          />
+          <Input
+            placeholder="Image URL (optional)"
+            defaultValue={section.image_url || ""}
+            onChange={(e) => onUpdate(section.id, "image_url", e.target.value)}
+            className="rounded-xl"
+          />
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

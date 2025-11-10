@@ -26,3 +26,26 @@
 - AI suggested `await params` → WRONG in client
 - Overruled → Used `use(params)` from React
 - Confirmed: Only needed in client components with dynamic routes
+
+- Preview was live — violated "preview before publish"
+- Fixed: Local state in edit → preview via localStorage + /api/preview
+- /careers only reads from DB
+- True preview: changes not live until "Publish"
+- Used iframe, server API, localStorage
+
+Fixed infinite loop issues
+Removed circular dependencies:
+Removed previewCompany, publishedCompany, and debouncedUpdatePreview from the form values effect dependencies
+Removed updatePreviewStorage from the sections effect dependencies
+Added a change check before updating state
+Used refs for stable callbacks:
+updatePreviewStorage now only depends on slug (stable)
+Uses refs to access the latest values without recreating the callback
+Added change detection:
+Form values effect only updates if values actually changed
+Sections effect uses serialization to detect real changes
+Added safety checks:
+Early returns if data isn't loaded
+Timeouts to ensure state has settled before updating
+The infinite loop should be resolved. The preview will still update when you change values, but without causing re-render loops.
+Try updating the logo URL again; it should work without the error.
