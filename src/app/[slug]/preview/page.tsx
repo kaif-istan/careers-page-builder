@@ -238,7 +238,7 @@ export default function PreviewPage({
 
       {/* Hero Section */}
       <div
-        className="relative h-[700px] bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 overflow-hidden"
+        className="relative h-[700px] bg-linear-to-br from-zinc-900 via-zinc-800 to-zinc-900 overflow-hidden"
         style={{
           backgroundImage: company.banner_url
             ? `url(${company.banner_url})`
@@ -248,7 +248,7 @@ export default function PreviewPage({
         }}
       >
         {/* Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/70" />
+        <div className="absolute inset-0 bg-linear-to-b from-black/70 via-black/50 to-black/70" />
 
         {/* Animated Background Pattern */}
         <div className="absolute inset-0 opacity-10">
@@ -378,7 +378,7 @@ export default function PreviewPage({
       </div>
 
       {/* CTA Section */}
-      <div className="bg-gradient-to-br from-zinc-50 to-zinc-100 py-20">
+      <div className="bg-linear-to-br from-zinc-50 to-zinc-100 py-20">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-4xl font-bold text-zinc-900 mb-4 tracking-tight">
             Ready to join us?

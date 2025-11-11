@@ -20,7 +20,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { login } from './action'
 
 
 console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
@@ -152,7 +151,7 @@ export default function LoginPage() {
   // Show loading spinner only during initial auth check
   if (checkingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-zinc-50 to-zinc-100">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
           <p className="text-zinc-600">Checking authentication...</p>
@@ -162,7 +161,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 via-white to-zinc-50 p-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-zinc-50 via-white to-zinc-50 p-4 relative overflow-hidden">
       {/* Animated Background Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
@@ -205,7 +204,7 @@ export default function LoginPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg mb-6"
+              className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-linear-to-br from-blue-600 to-purple-600 shadow-lg mb-6"
             >
               <Sparkles className="w-8 h-8 text-white" />
             </motion.div>

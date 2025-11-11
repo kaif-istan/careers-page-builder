@@ -30,7 +30,7 @@ export default function JobCard({ job, companySlug }: { job: Job & { description
       <Link href={`/${companySlug}/jobs/${job.job_slug}`} className="block">
         <div className="relative bg-white border border-zinc-200 rounded-2xl p-6 hover:shadow-xl transition-all duration-200 hover:border-zinc-300 overflow-hidden">
           {/* Gradient accent on hover */}
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-transparent group-hover:via-zinc-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+          <div className="absolute inset-0 bg-linear-to-r from-transparent via-transparent to-transparent group-hover:via-zinc-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
           
           <div className="relative">
             <div className="flex justify-between items-start mb-4">
