@@ -121,46 +121,131 @@ export default function EditPage({
     },
   });
 
-  // Auth check - must be logged in to access edit page
-  useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        toast.error('Please log in to continue');
-        router.push(`/login?redirect=/${slug}/edit`);
-        return;
-      }
-      
-      setCheckingAuth(false);
-      
-      // Load data after auth is verified
-      loadData();
-    }
+
+  // useEffect(() => {
+  //   let mounted = true;
     
+  //   // Listen to auth state changes
+  //   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+  //     console.log('Auth state changed:', event, session);
+      
+  //     if (!mounted) return;
+      
+  //     if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+  //       if (session) {
+  //         setCheckingAuth(false);
+  //         loadData();
+  //       } else {
+  //         toast.error('Please log in to continue');
+  //         router.push(`/login?redirect=/${slug}/edit`);
+  //       }
+  //     } else if (event === 'SIGNED_OUT') {
+  //       toast.error('Please log in to continue');
+  //       router.push(`/login?redirect=/${slug}/edit`);
+  //     }
+  //   });
+    
+  //   async function loadData() {
+  //     if (!mounted) return;
+      
+  //     const { data: comp, error } = await supabase
+  //       .from("companies")
+  //       .select("*")
+  //       .eq("slug", slug)
+  //       .single();
+  
+  //     if (!mounted) return;
+  
+  //     if (error || !comp) {
+  //       toast.error("Company not found");
+  //       notFound();
+  //       return;
+  //     }
+  
+  //     const { data: secs } = await supabase
+  //       .from("company_sections")
+  //       .select("*")
+  //       .eq("company_id", comp.id)
+  //       .order("order_index");
+  
+  //     if (!mounted) return;
+  
+  //     setPublishedCompany(comp);
+  //     setPublishedSections(secs || []);
+  
+  //     // Check for existing preview data
+  //     const existingPreview = loadPreviewFromStorage(slug);
+  //     if (existingPreview) {
+  //       const previewComp = { ...comp, ...existingPreview.company };
+  //       const previewSecs = existingPreview.sections;
+  //       previewCompanyRef.current = previewComp;
+  //       previewSectionsRef.current = previewSecs;
+  //       setPreviewCompany(previewComp);
+  //       setPreviewSections(previewSecs);
+  //       setHasUnsavedChanges(true);
+        
+  //       reset({
+  //         logo_url: existingPreview.company.logo_url || comp.logo_url || "",
+  //         banner_url: existingPreview.company.banner_url || comp.banner_url || "",
+  //         primary_color: existingPreview.company.primary_color || comp.primary_color,
+  //         culture_video_url: existingPreview.company.culture_video_url || comp.culture_video_url || "",
+  //       });
+  //     } else {
+  //       previewCompanyRef.current = comp;
+  //       previewSectionsRef.current = secs || [];
+  //       setPreviewCompany(comp);
+  //       setPreviewSections(secs || []);
+        
+  //       reset({
+  //         logo_url: comp.logo_url || "",
+  //         banner_url: comp.banner_url || "",
+  //         primary_color: comp.primary_color,
+  //         culture_video_url: comp.culture_video_url || "",
+  //       });
+  //     }
+  
+  //     setLoading(false);
+  //   }
+    
+  //   return () => {
+  //     mounted = false;
+  //     subscription.unsubscribe();
+  //   };
+  // }, [router, slug, reset]);
+
+  useEffect(() => {
+    let mounted = true;
+  
+    // ✅ Define the data-loading function first so it's in scope
     async function loadData() {
+      if (!mounted) return;
+  
       const { data: comp, error } = await supabase
         .from("companies")
         .select("*")
         .eq("slug", slug)
         .single();
-
+  
+      if (!mounted) return;
+  
       if (error || !comp) {
         toast.error("Company not found");
         notFound();
         return;
       }
-
+  
       const { data: secs } = await supabase
         .from("company_sections")
         .select("*")
         .eq("company_id", comp.id)
         .order("order_index");
-
+  
+      if (!mounted) return;
+  
       setPublishedCompany(comp);
       setPublishedSections(secs || []);
-
-      // Check for existing preview data
+  
+      // Check for existing preview data in localStorage
       const existingPreview = loadPreviewFromStorage(slug);
       if (existingPreview) {
         const previewComp = { ...comp, ...existingPreview.company };
@@ -170,8 +255,7 @@ export default function EditPage({
         setPreviewCompany(previewComp);
         setPreviewSections(previewSecs);
         setHasUnsavedChanges(true);
-        
-        // Reset form with preview data
+  
         reset({
           logo_url: existingPreview.company.logo_url || comp.logo_url || "",
           banner_url: existingPreview.company.banner_url || comp.banner_url || "",
@@ -179,12 +263,11 @@ export default function EditPage({
           culture_video_url: existingPreview.company.culture_video_url || comp.culture_video_url || "",
         });
       } else {
-        // No preview data, use published data
         previewCompanyRef.current = comp;
         previewSectionsRef.current = secs || [];
         setPreviewCompany(comp);
         setPreviewSections(secs || []);
-        
+  
         reset({
           logo_url: comp.logo_url || "",
           banner_url: comp.banner_url || "",
@@ -192,13 +275,51 @@ export default function EditPage({
           culture_video_url: comp.culture_video_url || "",
         });
       }
-
+  
       setLoading(false);
     }
-    
-    checkAuth();
+  
+    // ✅ Step 1: Check current session first
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Initial session check:', session);
+  
+      if (!mounted) return;
+  
+      if (!session) {
+        toast.error('Please log in to continue');
+        router.push(`/login?redirect=/${slug}/edit`);
+        return;
+      }
+  
+      setCheckingAuth(false);
+      await loadData();
+    }
+  
+    checkSession();
+  
+    // ✅ Step 2: Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session);
+      if (!mounted) return;
+  
+      if (event === 'SIGNED_IN' && session) {
+        setCheckingAuth(false);
+        loadData();
+      }
+  
+      if (event === 'SIGNED_OUT') {
+        toast.error('Please log in to continue');
+        router.push(`/login?redirect=/${slug}/edit`);
+      }
+    });
+  
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [router, slug, reset]);
-
+  
   const watchedValues = watch();
 
   const sensors = useSensors(

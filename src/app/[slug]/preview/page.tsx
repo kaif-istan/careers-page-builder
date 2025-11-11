@@ -1,165 +1,183 @@
-// src/app/[slug]/preview/page.tsx
-'use client'
+"use client";
 
-import { useEffect, useState, useRef } from 'react'
-import { use, useRouter } from 'react'
-import Link from 'next/link'
-import Image from 'next/image'
-import { Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
-import toast from 'react-hot-toast'
+import { useEffect, useState, useRef } from "react";
+import { use } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import toast from "react-hot-toast";
 
 type PreviewData = {
-  company: any
-  sections: any[]
-  isPreview?: boolean
-}
+  company: any;
+  sections: any[];
+  isPreview?: boolean;
+};
 
-export default function PreviewPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params)
-  const router = useRouter()
-  const [data, setData] = useState<PreviewData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [checkingAuth, setCheckingAuth] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const lastDataStrRef = useRef('')
-  const savedScrollRef = useRef<number | null>(null)
+export default function PreviewPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = use(params);
+  const router = useRouter();
+  const [data, setData] = useState<PreviewData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const lastDataStrRef = useRef("");
+  const savedScrollRef = useRef<number | null>(null);
 
   // Auth check - must be logged in to access preview page
   useEffect(() => {
     async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession()
-      
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session) {
-        toast.error('Please log in to view preview')
-        router.push(`/login?redirect=/${slug}/preview`)
-        return
+        toast.error("Please log in to view preview");
+        router.push(`/login?redirect=/${slug}/preview`);
+        return;
       }
-      
-      setCheckingAuth(false)
-      
+
+      setCheckingAuth(false);
+
+      console.log("xxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+
       // Load preview data after auth is verified
-      loadPreview()
+      loadPreview();
     }
-    
+
     async function loadPreview() {
       try {
         // First try to get from localStorage (client-side)
-        const previewKey = `preview_${slug}`
-        const stored = localStorage.getItem(previewKey)
-        
+        const previewKey = `preview_${slug}`;
+        const stored = localStorage.getItem(previewKey);
+
         if (stored) {
-          const previewData = JSON.parse(stored)
+          const previewData = JSON.parse(stored);
           setData({
             company: previewData.company,
             sections: previewData.sections,
             isPreview: true,
-          })
-          setLoading(false)
-          return
+          });
+          setLoading(false);
+          return;
         }
 
         // Fallback to API route (which will use cookies or DB)
-        const response = await fetch(`/api/preview?slug=${slug}`)
+        const response = await fetch(`/api/preview?slug=${slug}`);
         if (!response.ok) {
-          throw new Error('Failed to load preview')
+          throw new Error("Failed to load preview");
         }
-        
-        const apiData = await response.json()
-        setData(apiData)
+
+        const apiData = await response.json();
+        setData(apiData);
       } catch (err: any) {
-        setError(err.message || 'Failed to load preview')
+        setError(err.message || "Failed to load preview");
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
-    
-    checkAuth()
+
+    checkAuth();
 
     // Listen for custom preview-updated event (same-tab updates)
     const handlePreviewUpdate = (e: CustomEvent) => {
       if (e.detail?.slug === slug && e.detail?.data) {
         // Save current scroll position
-        savedScrollRef.current = window.scrollY || window.pageYOffset || 0
-        
+        savedScrollRef.current = window.scrollY || window.pageYOffset || 0;
+
         setData({
           company: e.detail.data.company,
           sections: e.detail.data.sections,
           isPreview: true,
-        })
+        });
       }
-    }
+    };
 
     // Listen for postMessage from parent window (iframe communication)
     const handleMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return
-      if (e.data?.type === 'preview-update' && e.data?.slug === slug && e.data?.data) {
+      if (e.origin !== window.location.origin) return;
+      if (
+        e.data?.type === "preview-update" &&
+        e.data?.slug === slug &&
+        e.data?.data
+      ) {
         // Save current scroll position
-        savedScrollRef.current = window.scrollY || window.pageYOffset || 0
-        
+        savedScrollRef.current = window.scrollY || window.pageYOffset || 0;
+
         setData({
           company: e.data.data.company,
           sections: e.data.data.sections,
           isPreview: true,
-        })
+        });
       }
-    }
+    };
 
     // Listen for storage changes (cross-tab updates)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === `preview_${slug}` && e.newValue) {
         try {
-          const previewData = JSON.parse(e.newValue)
+          const previewData = JSON.parse(e.newValue);
           setData({
             company: previewData.company,
             sections: previewData.sections,
             isPreview: true,
-          })
+          });
         } catch (error) {
-          console.error('Failed to parse storage update:', error)
+          console.error("Failed to parse storage update:", error);
         }
       }
-    }
+    };
 
-    window.addEventListener('preview-updated', handlePreviewUpdate as EventListener)
-    window.addEventListener('storage', handleStorageChange)
-    window.addEventListener('message', handleMessage)
+    window.addEventListener(
+      "preview-updated",
+      handlePreviewUpdate as EventListener
+    );
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("message", handleMessage);
 
     // Also poll for changes (backup mechanism)
     const interval = setInterval(() => {
-      const stored = localStorage.getItem(`preview_${slug}`)
+      const stored = localStorage.getItem(`preview_${slug}`);
       if (stored) {
         try {
-          const previewData = JSON.parse(stored)
+          const previewData = JSON.parse(stored);
           const newDataStr = JSON.stringify({
             company: previewData.company,
             sections: previewData.sections,
-          })
+          });
           // Only update if data actually changed
           if (newDataStr !== lastDataStrRef.current) {
-            lastDataStrRef.current = newDataStr
+            lastDataStrRef.current = newDataStr;
             // Save current scroll position
-            savedScrollRef.current = window.scrollY || window.pageYOffset || 0
-            
+            savedScrollRef.current = window.scrollY || window.pageYOffset || 0;
+
             setData({
               company: previewData.company,
               sections: previewData.sections,
               isPreview: true,
-            })
+            });
           }
         } catch (error) {
           // Ignore parse errors
         }
       }
-    }, 500)
+    }, 500);
 
     return () => {
-      window.removeEventListener('preview-updated', handlePreviewUpdate as EventListener)
-      window.removeEventListener('storage', handleStorageChange)
-      window.removeEventListener('message', handleMessage)
-      clearInterval(interval)
-    }
-  }, [slug])
+      window.removeEventListener(
+        "preview-updated",
+        handlePreviewUpdate as EventListener
+      );
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("message", handleMessage);
+      clearInterval(interval);
+    };
+  }, [slug]);
 
   // Restore scroll position after data updates
   useEffect(() => {
@@ -168,13 +186,13 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (savedScrollRef.current !== null) {
-            window.scrollTo(0, savedScrollRef.current)
-            savedScrollRef.current = null
+            window.scrollTo(0, savedScrollRef.current);
+            savedScrollRef.current = null;
           }
-        })
-      })
+        });
+      });
     }
-  }, [data])
+  }, [data]);
 
   if (checkingAuth || loading) {
     return (
@@ -182,27 +200,32 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
           <p className="text-zinc-600">
-            {checkingAuth ? 'Checking authentication...' : 'Loading preview...'}
+            {checkingAuth ? "Checking authentication..." : "Loading preview..."}
           </p>
         </div>
       </div>
-    )
+    );
   }
 
   if (error || !data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <p className="text-red-600 mb-4">Error: {error || 'Failed to load preview'}</p>
-          <Link href={`/${slug}/edit`} className="text-blue-600 hover:underline">
+          <p className="text-red-600 mb-4">
+            Error: {error || "Failed to load preview"}
+          </p>
+          <Link
+            href={`/${slug}/edit`}
+            className="text-blue-600 hover:underline"
+          >
             Go back to editor
           </Link>
         </div>
       </div>
-    )
+    );
   }
 
-  const { company, sections } = data
+  const { company, sections } = data;
 
   return (
     <div className="min-h-screen bg-white">
@@ -214,25 +237,28 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
       )}
 
       {/* Hero Section */}
-      <div 
+      <div
         className="relative h-[700px] bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 overflow-hidden"
-        style={{ 
-          backgroundImage: company.banner_url 
-            ? `url(${company.banner_url})` 
+        style={{
+          backgroundImage: company.banner_url
+            ? `url(${company.banner_url})`
             : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
+          backgroundSize: "cover",
+          backgroundPosition: "center",
         }}
       >
         {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/70" />
-        
+
         {/* Animated Background Pattern */}
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute inset-0" style={{
-            backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
-            backgroundSize: '40px 40px',
-          }} />
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
+              backgroundSize: "40px 40px",
+            }}
+          />
         </div>
 
         <div className="relative max-w-6xl mx-auto px-6 h-full flex items-center">
@@ -240,7 +266,7 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
             {company.logo_url ? (
               <div className="mb-8">
                 <div className="relative w-32 h-32 rounded-2xl overflow-hidden border-4 border-white/20 shadow-2xl backdrop-blur-sm bg-white/10">
-                  <Image 
+                  <Image
                     src={company.logo_url}
                     alt={`${company.name} logo`}
                     width={128}
@@ -254,7 +280,9 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
             ) : (
               <div className="mb-8">
                 <div className="w-32 h-32 rounded-2xl border-4 border-white/20 shadow-2xl backdrop-blur-sm bg-white/10 flex items-center justify-center">
-                  <span className="text-white/60 text-sm font-medium">No Logo</span>
+                  <span className="text-white/60 text-sm font-medium">
+                    No Logo
+                  </span>
                 </div>
               </div>
             )}
@@ -269,8 +297,18 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
 
         {/* Scroll Indicator */}
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
-          <svg className="w-6 h-6 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          <svg
+            className="w-6 h-6 text-white/60"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 14l-7 7m0 0l-7-7m7 7V3"
+            />
           </svg>
         </div>
       </div>
@@ -280,7 +318,11 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
         <div className="max-w-6xl mx-auto px-6 mt-20">
           <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl border border-zinc-200">
             <iframe
-              src={company.culture_video_url.replace('watch?v=', 'embed/').split('&')[0]}
+              src={
+                company.culture_video_url
+                  .replace("watch?v=", "embed/")
+                  .split("&")[0]
+              }
               className="w-full h-full"
               allowFullScreen
               title="Company Culture"
@@ -297,7 +339,7 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
             <section
               key={s.id}
               className={`flex flex-col gap-8 ${
-                index % 2 === 1 ? 'lg:flex-row-reverse' : 'lg:flex-row'
+                index % 2 === 1 ? "lg:flex-row-reverse" : "lg:flex-row"
               } items-center`}
             >
               <div className="flex-1 space-y-4">
@@ -344,18 +386,28 @@ export default function PreviewPage({ params }: { params: Promise<{ slug: string
           <p className="text-xl text-zinc-600 mb-8">
             Explore our open positions and find your next opportunity
           </p>
-          <Link 
+          <Link
             href={`/${slug}/careers`}
             className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-200 hover:scale-105 shadow-lg text-white"
-            style={{ backgroundColor: company.primary_color || '#3b82f6' }}
+            style={{ backgroundColor: company.primary_color || "#3b82f6" }}
           >
             View Open Roles
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 8l4 4m0 0l-4 4m4-4H3"
+              />
             </svg>
           </Link>
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,34 +1,48 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
-import { motion, AnimatePresence } from 'motion/react'
-import { supabase } from '@/lib/supabase'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
-import { Mail, Lock, Loader2, Check, AlertCircle, Sparkles } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { motion, AnimatePresence } from "motion/react";
+import { supabase } from "@/lib/supabase";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Mail,
+  Lock,
+  Loader2,
+  Check,
+  AlertCircle,
+  Sparkles,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import { login } from './action'
+
+
+console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log(
+  "Supabase Key:",
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0, 10)
+);
 
 // Validation schema
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-})
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
 
-type LoginForm = z.infer<typeof loginSchema>
+type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [loading, setLoading] = useState(false)
-  const [checkingAuth, setCheckingAuth] = useState(true)
-  const [success, setSuccess] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [success, setSuccess] = useState(false);
 
   const {
     register,
@@ -38,87 +52,105 @@ export default function LoginPage() {
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: 'recruiter@acme.com',
-      password: 'password123',
+      email: "recruiter@acme.com",
+      password: "password123",
     },
-  })
+  });
 
   // Check if already logged in
   useEffect(() => {
     async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (session) {
-        // Already logged in, redirect to home or redirect URL
-        const redirect = searchParams.get('redirect') || '/'
-        router.push(redirect)
-        return
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        console.log("Session:", session);
+
+        if (session) {
+          // Already logged in, redirect to home or redirect URL
+          const redirect = searchParams.get("redirect") || "/dashboard";
+          router.push(redirect);
+        }
+      } catch (error) {
+        console.error("Auth check error:", error);
+      } finally {
+        // Always set checkingAuth to false, regardless of session status
+        setCheckingAuth(false);
       }
-      
-      setCheckingAuth(false)
-      setMounted(true)
     }
-    
-    checkAuth()
-  }, [router, searchParams])
+
+    checkAuth();
+  }, [router, searchParams]);
 
   const onSubmit = async (data: LoginForm) => {
-    setLoading(true)
-    setSuccess(false)
+    setLoading(true);
+    setSuccess(false);
 
     try {
       const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
-      })
+      });
 
-      if (error) {
-        setError('root', { message: error.message })
-        toast.error(error.message)
-        setLoading(false)
-        return
+      if (error) throw error;
+
+      if (!authData.session) {
+        toast.error("No session returned. Try again.");
+        setLoading(false);
+        return;
       }
 
-      // Success!
-      setSuccess(true)
-      toast.success('Welcome back!')
+      setSuccess(true);
+      toast.success("Welcome back!");
 
-      // Redirect to original URL or home
-      const redirect = searchParams.get('redirect') || '/'
-      setTimeout(() => {
-        router.push(redirect)
-        router.refresh()
-      }, 1000)
+      // ✅ Add this to stop spinner before navigation
+      setLoading(false);
+
+      // Small delay to ensure session is persisted
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const redirect = searchParams.get("redirect") || "/";
+
+      console.log("redirecting to:", redirect);
+
+      // ✅ Force full reload to ensure Supabase session hydrates globally
+      if (window.location.pathname !== redirect) {
+        console.log("...............x");
+        window.location.href = redirect;
+      }
     } catch (err: any) {
-      setError('root', { message: err.message || 'An unexpected error occurred' })
-      toast.error(err.message || 'An unexpected error occurred')
-      setLoading(false)
+      console.error("Login error:", err);
+      toast.error(err.message || "Unexpected error");
+      setLoading(false);
     }
-  }
+  };
 
   const handleGoogleLogin = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const redirectTo = `${window.location.origin}${searchParams.get('redirect') || '/'}`
+      const redirectTo = `${window.location.origin}${
+        searchParams.get("redirect") || "/dashboard"
+      }`;
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
           redirectTo,
         },
-      })
+      });
 
       if (error) {
-        toast.error(error.message)
-        setLoading(false)
+        toast.error(error.message);
+        setLoading(false);
       }
       // OAuth will redirect, so we don't need to handle success here
     } catch (err: any) {
-      toast.error(err.message || 'Failed to sign in with Google')
-      setLoading(false)
+      toast.error(err.message || "Failed to sign in with Google");
+      setLoading(false);
     }
-  }
+  };
 
-  if (checkingAuth || !mounted) {
+  // Show loading spinner only during initial auth check
+  if (checkingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100">
         <div className="text-center">
@@ -126,7 +158,7 @@ export default function LoginPage() {
           <p className="text-zinc-600">Checking authentication...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -143,7 +175,7 @@ export default function LoginPage() {
           transition={{
             duration: 20,
             repeat: Infinity,
-            ease: 'easeInOut',
+            ease: "easeInOut",
           }}
         />
         <motion.div
@@ -156,7 +188,7 @@ export default function LoginPage() {
           transition={{
             duration: 25,
             repeat: Infinity,
-            ease: 'easeInOut',
+            ease: "easeInOut",
           }}
         />
       </div>
@@ -213,7 +245,7 @@ export default function LoginPage() {
                 disabled={loading || success}
                 className="w-full h-12 rounded-xl font-semibold text-base bg-white hover:bg-zinc-50 text-zinc-900 border-2 border-zinc-200 shadow-sm hover:shadow-md transition-all duration-200 mb-6"
               >
-                {loading ? (
+                {loading && !success ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin mr-2" />
                     Signing in...
@@ -248,14 +280,19 @@ export default function LoginPage() {
                   <div className="w-full border-t border-zinc-200"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white/80 text-zinc-500">Or continue with email</span>
+                  <span className="px-4 bg-white/80 text-zinc-500">
+                    Or continue with email
+                  </span>
                 </div>
               </div>
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 {/* Email Field */}
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-zinc-700 font-semibold">
+                  <Label
+                    htmlFor="email"
+                    className="text-zinc-700 font-semibold"
+                  >
                     Email address
                   </Label>
                   <div className="relative">
@@ -265,11 +302,15 @@ export default function LoginPage() {
                       type="email"
                       placeholder="recruiter@company.com"
                       className={`pl-10 h-12 rounded-xl border-zinc-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 ${
-                        errors.email ? 'border-red-500 focus:ring-red-500/20' : ''
+                        errors.email
+                          ? "border-red-500 focus:ring-red-500/20"
+                          : ""
                       }`}
-                      {...register('email')}
-                      aria-invalid={errors.email ? 'true' : 'false'}
-                      aria-describedby={errors.email ? 'email-error' : undefined}
+                      {...register("email")}
+                      aria-invalid={errors.email ? "true" : "false"}
+                      aria-describedby={
+                        errors.email ? "email-error" : undefined
+                      }
                     />
                   </div>
                   <AnimatePresence>
@@ -291,7 +332,10 @@ export default function LoginPage() {
 
                 {/* Password Field */}
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-zinc-700 font-semibold">
+                  <Label
+                    htmlFor="password"
+                    className="text-zinc-700 font-semibold"
+                  >
                     Password
                   </Label>
                   <div className="relative">
@@ -301,11 +345,15 @@ export default function LoginPage() {
                       type="password"
                       placeholder="Enter your password"
                       className={`pl-10 h-12 rounded-xl border-zinc-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 ${
-                        errors.password ? 'border-red-500 focus:ring-red-500/20' : ''
+                        errors.password
+                          ? "border-red-500 focus:ring-red-500/20"
+                          : ""
                       }`}
-                      {...register('password')}
-                      aria-invalid={errors.password ? 'true' : 'false'}
-                      aria-describedby={errors.password ? 'password-error' : undefined}
+                      {...register("password")}
+                      aria-invalid={errors.password ? "true" : "false"}
+                      aria-describedby={
+                        errors.password ? "password-error" : undefined
+                      }
                     />
                   </div>
                   <AnimatePresence>
@@ -335,7 +383,7 @@ export default function LoginPage() {
                       role="alert"
                       className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2"
                     >
-                      <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                      <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
                       <span>{errors.root.message}</span>
                     </motion.div>
                   )}
@@ -345,7 +393,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   disabled={loading || success}
-                  className="w-full h-12 rounded-xl font-semibold text-base bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-200 disabled:hover:scale-100"
+                  className="w-full h-12 rounded-xl font-semibold text-base bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-200 disabled:hover:scale-100"
                 >
                   {loading ? (
                     <>
@@ -358,7 +406,7 @@ export default function LoginPage() {
                       Success! Redirecting...
                     </>
                   ) : (
-                    'Continue'
+                    "Continue"
                   )}
                 </Button>
               </form>
@@ -369,7 +417,7 @@ export default function LoginPage() {
                   type="button"
                   className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
                   onClick={() => {
-                    toast('Password reset coming soon!', { icon: '🔒' })
+                    toast("Password reset coming soon!", { icon: "🔒" });
                   }}
                 >
                   Forgot your password?
@@ -386,7 +434,9 @@ export default function LoginPage() {
             className="mt-8 text-center"
           >
             <p className="text-sm text-zinc-500 mb-4">
-              Trusted by <span className="font-semibold text-zinc-700">500+</span> growing companies
+              Trusted by{" "}
+              <span className="font-semibold text-zinc-700">500+</span> growing
+              companies
             </p>
             <div className="flex items-center justify-center gap-6 opacity-50">
               <div className="text-xs font-semibold text-zinc-400">Stripe</div>
@@ -398,5 +448,5 @@ export default function LoginPage() {
         </motion.div>
       </div>
     </div>
-  )
+  );
 }
