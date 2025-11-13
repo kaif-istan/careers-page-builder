@@ -67,7 +67,7 @@ export default function LoginPage() {
 
         if (session) {
           // Already logged in, redirect to home or redirect URL
-          const redirect = searchParams.get("redirect") || "/dashboard";
+          const redirect = searchParams.get("redirect") || "/";
           router.push(redirect);
         }
       } catch (error) {
@@ -124,29 +124,29 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      const redirectTo = `${window.location.origin}${
-        searchParams.get("redirect") || "/dashboard"
-      }`;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-        },
-      });
+  // const handleGoogleLogin = async () => {
+  //   setLoading(true);
+  //   try {
+  //     const redirectTo = `${window.location.origin}${
+  //       searchParams.get("redirect") || "/dashboard"
+  //     }`;
+  //     const { error } = await supabase.auth.signInWithOAuth({
+  //       provider: "google",
+  //       options: {
+  //         redirectTo,
+  //       },
+  //     });
 
-      if (error) {
-        toast.error(error.message);
-        setLoading(false);
-      }
-      // OAuth will redirect, so we don't need to handle success here
-    } catch (err: any) {
-      toast.error(err.message || "Failed to sign in with Google");
-      setLoading(false);
-    }
-  };
+  //     if (error) {
+  //       toast.error(error.message);
+  //       setLoading(false);
+  //     }
+  //     // OAuth will redirect, so we don't need to handle success here
+  //   } catch (err: any) {
+  //     toast.error(err.message || "Failed to sign in with Google");
+  //     setLoading(false);
+  //   }
+  // };
 
   // Show loading spinner only during initial auth check
   if (checkingAuth) {
@@ -238,7 +238,7 @@ export default function LoginPage() {
           <Card className="backdrop-blur-md bg-white/80 border-zinc-200 shadow-xl hover:shadow-2xl transition-shadow duration-300">
             <CardContent className="p-8">
               {/* Google OAuth Button */}
-              <Button
+              {/* <Button
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={loading || success}
@@ -254,7 +254,7 @@ export default function LoginPage() {
                     <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                       <path
                         fill="currentColor"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        // d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                       />
                       <path
                         fill="currentColor"
@@ -272,9 +272,9 @@ export default function LoginPage() {
                     Continue with Google
                   </>
                 )}
-              </Button>
+              </Button> */}
 
-              <div className="relative my-6">
+              {/* <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-zinc-200"></div>
                 </div>
@@ -283,7 +283,7 @@ export default function LoginPage() {
                     Or continue with email
                   </span>
                 </div>
-              </div>
+              </div> */}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 {/* Email Field */}
@@ -411,7 +411,7 @@ export default function LoginPage() {
               </form>
 
               {/* Forgot Password Link */}
-              <div className="mt-6 text-center">
+              {/* <div className="mt-6 text-center">
                 <button
                   type="button"
                   className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
@@ -421,7 +421,7 @@ export default function LoginPage() {
                 >
                   Forgot your password?
                 </button>
-              </div>
+              </div> */}
             </CardContent>
           </Card>
 

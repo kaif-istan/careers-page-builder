@@ -44,8 +44,6 @@ export default function PreviewPage({
 
       setCheckingAuth(false);
 
-      console.log("xxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-
       // Load preview data after auth is verified
       loadPreview();
     }
