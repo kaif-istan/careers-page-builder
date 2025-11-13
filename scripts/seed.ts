@@ -105,11 +105,11 @@ async function seed() {
   // Deduplicate job_slugs (Postgres will error if duplicates exist)
   const seen = new Set<string>()
   const uniqueJobs = jobs.filter((j) => {
-    if (seen.has(j.job_slug)) {
-      console.warn(`⚠️ Duplicate job_slug "${j.job_slug}" skipped`)
+    if (seen.has(j!.job_slug)) {
+      console.warn(`⚠️ Duplicate job_slug "${j!.job_slug}" skipped`)
       return false
     }
-    seen.add(j.job_slug)
+    seen.add(j!.job_slug)
     return true
   })
 
