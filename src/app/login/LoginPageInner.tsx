@@ -43,11 +43,7 @@ export default function LoginPage() {
     formState: { errors },
     setError,
   } = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "recruiter@acme.com",
-      password: "password123",
-    },
+    resolver: zodResolver(loginSchema)
   });
 
   // Check if already logged in
