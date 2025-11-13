@@ -282,7 +282,8 @@ export default function EditPage({
     // ✅ Step 1: Check current session first
     async function checkSession() {
       const { data: { session } } = await supabase.auth.getSession();
-      console.log('Initial session check:', session);
+
+
   
       if (!mounted) return;
   
@@ -300,7 +301,6 @@ export default function EditPage({
   
     // ✅ Step 2: Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event, session);
       if (!mounted) return;
   
       if (event === 'SIGNED_IN' && session) {
