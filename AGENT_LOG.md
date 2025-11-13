@@ -123,3 +123,10 @@ All routes are protected. Only the public careers pages and login page are acces
 - Read supabase docs ['Build a User Management App with Next.js'](https://supabase.com/docs/guides/getting-started/tutorials/with-nextjs)
 - Fixed middlewares.
 - Used the new PUBLISHABLE_KEY for auth implementation.
+
+### During Deployment
+- Faced useSearchParams() should be wrapped in a suspense boundary at page "/login" error.
+- Pasted error on ChatGPT.
+- ChatGPT suggested to wrap the LoginPageInner in a Suspense boundary.
+- Added the Suspense boundary to the LoginPageInner.
+- The error was resolved.
