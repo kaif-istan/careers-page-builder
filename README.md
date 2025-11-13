@@ -1,5 +1,9 @@
 # Careers Page Builder (v0.1.0)
 
+🚀 **Live Demo:** [careers-page-builder-blond.vercel.app](careers-page-builder-blond.vercel.app)
+
+
+
 Build and publish beautiful, high‑performing careers pages backed by Supabase. This project is the completed Full Stack Developer assignment for WhiteCarrot and demonstrates secure preview/publish workflows, recruiter authentication, and job listing management.
 
 ## Description
