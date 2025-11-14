@@ -1,6 +1,6 @@
 # Careers Page Builder (v0.1.0)
 
-🚀 **Live Demo:** [careers-page-builder-blond.vercel.app](careers-page-builder-blond.vercel.app)
+🚀 **Live Demo:** careers-page-builder-blond.vercel.app
 
 
 
